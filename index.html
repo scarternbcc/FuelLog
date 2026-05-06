@@ -582,7 +582,7 @@
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const CFG_KEY = 'fuellog_cfg';
-let supabase = null;
+let sbClient = null;
 let currentUser = null;
 let vehicles = [];
 let editingVehicleId = null;
@@ -598,7 +598,7 @@ function saveConfigData(url, key) {
 }
 
 function initSupabase(url, key) {
-  supabase = window.supabase.createClient(url, key);
+  sbClient = window.supabase.createClient(url, key);
 }
 
 // ── BOOT ────────────────────────────────────────────────────────────────────
@@ -611,7 +611,7 @@ async function boot() {
   }
   initSupabase(cfg.url, cfg.key);
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await sbClient.auth.getSession();
     hide('loading-screen');
     if (session) {
       await startApp(session.user);
@@ -636,7 +636,7 @@ async function saveConfig() {
   err.textContent = '';
   try {
     initSupabase(url, key);
-    const { error } = await supabase.auth.getSession();
+    const { error } = await sbClient.auth.getSession();
     if (error) throw error;
     saveConfigData(url, key);
     hide('config-screen');
@@ -666,7 +666,7 @@ async function doLogin() {
   const password = document.getElementById('login-password').value;
   if (!email || !password) { setAuthError('Email and password required.'); return; }
   setBtnLoading('login-btn', true);
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
   if (error) { setAuthError(error.message); setBtnLoading('login-btn', false); return; }
   hide('auth-screen');
   await startApp(data.user);
@@ -678,7 +678,7 @@ async function doSignup() {
   if (!email || !password) { setAuthError('Email and password required.'); return; }
   if (password.length < 6) { setAuthError('Password must be at least 6 characters.'); return; }
   setBtnLoading('signup-btn', true);
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await sbClient.auth.signUp({ email, password });
   if (error) { setAuthError(error.message); setBtnLoading('signup-btn', false); return; }
   if (data.user && !data.session) {
     setAuthError('Check your email to confirm your account, then sign in.');
@@ -691,7 +691,7 @@ async function doSignup() {
 
 async function doSignOut() {
   if (!confirm('Sign out?')) return;
-  await supabase.auth.signOut();
+  await sbClient.auth.signOut();
   vehicles = [];
   currentUser = null;
   hide('app');
@@ -721,7 +721,7 @@ async function startApp(user) {
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
 async function loadVehicles() {
-  const { data, error } = await supabase.from('vehicles').select('*').order('created_at');
+  const { data, error } = await sbClient.from('vehicles').select('*').order('created_at');
   if (!error) {
     vehicles = data || [];
     // auto-select first
@@ -733,7 +733,7 @@ async function loadVehicles() {
 }
 
 async function loadFillups(vehicleId) {
-  const { data, error } = await supabase.from('fillups')
+  const { data, error } = await sbClient.from('fillups')
     .select('*').eq('vehicle_id', vehicleId).order('date').order('created_at');
   if (error) return [];
   return data || [];
@@ -843,7 +843,7 @@ async function saveLog() {
   const notes = document.getElementById('log-notes').value.trim();
   if (!date || !odometer || !gallons) { showToast('Date, odometer & gallons required', true); return; }
   setBtnLoading('save-log-btn', true);
-  const { error } = await supabase.from('fillups').insert({
+  const { error } = await sbClient.from('fillups').insert({
     user_id: currentUser.id, vehicle_id: vid,
     date, odometer: parseFloat(odometer), gallons: parseFloat(gallons),
     price: price ? parseFloat(price) : null, notes: notes || null
@@ -857,7 +857,7 @@ async function saveLog() {
 
 async function deleteFillup(id) {
   if (!confirm('Delete this fill-up?')) return;
-  await supabase.from('fillups').delete().eq('id', id);
+  await sbClient.from('fillups').delete().eq('id', id);
   showToast('Deleted');
   renderHistory();
 }
@@ -900,9 +900,9 @@ async function saveVehicle() {
   setBtnLoading('vehicle-modal-btn', true);
   let error;
   if (editingVehicleId) {
-    ({ error } = await supabase.from('vehicles').update(payload).eq('id', editingVehicleId));
+    ({ error } = await sbClient.from('vehicles').update(payload).eq('id', editingVehicleId));
   } else {
-    ({ error } = await supabase.from('vehicles').insert({ ...payload, user_id: currentUser.id }));
+    ({ error } = await sbClient.from('vehicles').insert({ ...payload, user_id: currentUser.id }));
   }
   setBtnLoading('vehicle-modal-btn', false);
   if (error) { showToast('Error saving vehicle', true); return; }
@@ -915,7 +915,7 @@ async function saveVehicle() {
 
 async function deleteVehicle() {
   if (!confirm('Delete this vehicle and ALL its fill-up history?')) return;
-  await supabase.from('vehicles').delete().eq('id', editingVehicleId);
+  await sbClient.from('vehicles').delete().eq('id', editingVehicleId);
   closeModal('vehicle-modal');
   if (selectedVehicleId.log === editingVehicleId) { selectedVehicleId.log = null; document.getElementById('log-vehicle-name').textContent = 'Choose a vehicle'; }
   if (selectedVehicleId.history === editingVehicleId) { selectedVehicleId.history = null; document.getElementById('history-vehicle-name').textContent = 'Choose a vehicle'; }
