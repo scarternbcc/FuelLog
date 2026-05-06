@@ -59,8 +59,7 @@
 
     /* ── AUTH SCREEN ── */
     #auth-screen {
-      display: none; min-height: 100dvh; flex-direction: column;
-      justify-content: center; padding: 32px 24px;
+      display: none; min-height: 100dvh; padding: 60px 24px;
       background: radial-gradient(ellipse at 50% 0%, rgba(240,180,41,0.12) 0%, transparent 60%);
     }
     .auth-logo {
@@ -1069,7 +1068,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-function show(id) { const el = document.getElementById(id); el.style.display = el.tagName === 'DIV' ? 'flex' : 'block'; if (id==='app') el.style.display='block'; }
+function show(id) { document.getElementById(id).style.display = 'block'; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 function todayStr() { return new Date().toISOString().slice(0,10); }
 function formatDate(str) { if (!str) return ''; const d = new Date(str+'T00:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
