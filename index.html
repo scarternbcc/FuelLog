@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FuelLog">
+  <meta name="theme-color" content="#0a0c12">
+  <title>FuelLog</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg:       #0a0c12;
+      --surface:  #13161f;
+      --surface2: #1c2030;
+      --border:   #252a3a;
+      --accent:   #f0b429;
+      --accent2:  #ff5c5c;
+      --green:    #34d399;
+      --blue:     #60a5fa;
+      --text:     #e8edf5;
+      --muted:    #6b7494;
+      --r:        14px;
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      max-width: 430px;
+      margin: 0 auto;
+      overflow-x: hidden;
+    }
+
+    /* ── LOADING ── */
+    #loading-screen {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; gap: 16px;
+    }
+    .loader-logo { font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: 4px; color: var(--accent); }
+    .loader-bar { width: 120px; height: 3px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .loader-bar::after {
+      content: ''; display: block; height: 100%; width: 40%;
+      background: var(--accent); border-radius: 3px;
+      animation: loader 1s ease-in-out infinite alternate;
+    }
+    @keyframes loader { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+    /* ── AUTH SCREEN ── */
+    #auth-screen {
+      display: none; min-height: 100dvh; flex-direction: column;
+      justify-content: center; padding: 32px 24px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(240,180,41,0.12) 0%, transparent 60%);
+    }
+    .auth-logo {
+      font-family: 'Bebas Neue', sans-serif; font-size: 52px; letter-spacing: 5px;
+      color: var(--text); text-align: center; margin-bottom: 6px;
+    }
+    .auth-logo span { color: var(--accent); }
+    .auth-tagline { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 40px; font-weight: 300; letter-spacing: 0.5px; }
+
+    .auth-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 28px 24px;
+    }
+    .auth-tabs { display: flex; gap: 0; margin-bottom: 24px; background: var(--surface2); border-radius: 10px; padding: 3px; }
+    .auth-tab {
+      flex: 1; padding: 9px; border-radius: 8px; border: none;
+      background: transparent; color: var(--muted); font-family: 'Outfit', sans-serif;
+      font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .auth-tab.active { background: var(--accent); color: #000; font-weight: 600; }
+
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; letter-spacing: 1.5px; text-transform: uppercase; }
+    .field input, .field select {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 14px; color: var(--text);
+      font-family: 'Outfit', sans-serif; font-size: 16px; outline: none;
+      transition: border-color 0.2s; -webkit-appearance: none;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    .field input::placeholder { color: var(--muted); }
+
+    .btn {
+      display: block; width: 100%; padding: 15px; border-radius: 12px; border: none;
+      font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
+      cursor: pointer; transition: all 0.18s; letter-spacing: 0.3px;
+    }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); margin-top: 10px; }
+    .btn-danger { background: rgba(255,92,92,0.12); color: var(--accent2); border: 1px solid rgba(255,92,92,0.25); margin-top: 10px; font-size: 14px; padding: 12px; }
+    .btn:disabled { opacity: 0.5; pointer-events: none; }
+
+    .auth-error { color: var(--accent2); font-size: 13px; text-align: center; margin-top: 12px; min-height: 18px; }
+
+    /* ── APP SHELL ── */
+    #app { display: none; }
+
+    /* ── HEADER ── */
+    .header {
+      padding: calc(var(--sat) + 14px) 20px 14px;
+      background: rgba(10,12,18,0.92); position: sticky; top: 0; z-index: 100;
+      border-bottom: 1px solid var(--border); display: flex; align-items: center;
+      justify-content: space-between; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    .logo { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 3px; }
+    .logo span { color: var(--accent); }
+    .user-pill {
+      display: flex; align-items: center; gap: 8px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 100px; padding: 6px 12px 6px 6px;
+      cursor: pointer;
+    }
+    .user-avatar {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: #000;
+    }
+    .user-email { font-size: 12px; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── SCREENS ── */
+    .screen { display: none; padding: 0 20px 110px; animation: fadeIn 0.2s ease; }
+    .screen.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── SECTION LABEL ── */
+    .section-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2.5px;
+      color: var(--muted); text-transform: uppercase; margin: 20px 0 10px;
+    }
+
+    /* ── VEHICLE CARDS ── */
+    .vehicle-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 18px; margin-bottom: 12px; cursor: pointer; transition: all 0.18s;
+      position: relative; overflow: hidden;
+    }
+    .vehicle-card::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+    }
+    .vehicle-card:active { transform: scale(0.985); }
+    .vehicle-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+    .vehicle-name { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1.5px; line-height: 1; }
+    .vehicle-sub { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 300; }
+    .fuel-chip {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 4px 9px;
+      border-radius: 6px; background: var(--surface2); color: var(--muted); letter-spacing: 1px;
+    }
+    .vehicle-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { background: var(--surface2); border-radius: 10px; padding: 10px; text-align: center; }
+    .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500; color: var(--accent); }
+    .stat-value.good { color: var(--green); }
+    .stat-value.bad { color: var(--accent2); }
+    .stat-label { font-size: 9px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ── EMPTY STATE ── */
+    .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
+    .empty-icon { font-size: 44px; margin-bottom: 14px; }
+    .empty-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px; color: var(--text); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; line-height: 1.6; font-weight: 300; }
+
+    /* ── VEHICLE SELECTOR ── */
+    .vehicle-selector {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 14px 16px; margin-bottom: 14px; display: flex; align-items: center;
+      gap: 12px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .vehicle-selector:active { border-color: var(--accent); }
+    .vs-icon { font-size: 22px; }
+    .vs-info { flex: 1; }
+    .vs-name { font-weight: 600; font-size: 15px; }
+    .vs-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .vs-chevron { color: var(--muted); font-size: 20px; }
+
+    /* ── FORM CARD ── */
+    .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; margin-bottom: 14px; }
+    .form-title { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 1px; margin-bottom: 18px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* ── LOG LIST ── */
+    .log-item {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 14px 16px; margin-bottom: 9px; display: flex; align-items: center; gap: 12px;
+    }
+    .log-main { flex: 1; }
+    .log-date { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .log-details { font-size: 13px; color: var(--text); font-weight: 300; }
+    .log-mpg-block { text-align: right; }
+    .log-mpg { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; color: var(--accent); }
+    .log-mpg-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .log-delete { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+    .log-delete:active { color: var(--accent2); }
+
+    /* ── GAUGE ── */
+    .gauge-wrap {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 24px 20px; margin-bottom: 14px; text-align: center;
+    }
+    .gauge-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+    .gauge-svg { width: 190px; height: 105px; }
+    .gauge-number { font-family: 'Bebas Neue', sans-serif; font-size: 52px; letter-spacing: 2px; color: var(--text); line-height: 1; margin-top: -4px; }
+    .gauge-unit { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+
+    /* ── CHART ── */
+    .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px; margin-bottom: 14px; }
+    .chart-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px;
+      background: rgba(10,12,18,0.94); border-top: 1px solid var(--border);
+      display: flex; padding: 10px 0 calc(var(--sab) + 8px);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 200;
+    }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 6px 0; cursor: pointer; border: none; background: transparent;
+      color: var(--muted); transition: color 0.2s;
+    }
+    .nav-item.active { color: var(--accent); }
+    .nav-icon { font-size: 21px; line-height: 1; }
+    .nav-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.5px; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 300;
+      display: flex; align-items: flex-end; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--surface); border-radius: 24px 24px 0 0;
+      padding: 8px 20px calc(var(--sab) + 24px); width: 100%;
+      transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      max-height: 85dvh; overflow-y: auto;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 18px; }
+    .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 1.5px; margin-bottom: 18px; }
+
+    /* ── PICKER LIST ── */
+    .picker-item {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r);
+      margin-bottom: 10px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .picker-item:active { border-color: var(--accent); }
+    .picker-item-icon { font-size: 24px; }
+    .picker-item-name { font-weight: 600; font-size: 15px; }
+    .picker-item-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── SETTINGS ITEMS ── */
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row-label { font-size: 14px; font-weight: 500; }
+    .settings-row-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .settings-row-action { color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: calc(var(--sab) + 78px); left: 50%;
+      transform: translateX(-50%) translateY(12px); background: var(--green); color: #000;
+      padding: 10px 22px; border-radius: 100px; font-weight: 600; font-size: 14px;
+      z-index: 500; opacity: 0; transition: all 0.28s; white-space: nowrap; pointer-events: none;
+    }
+    .toast.error { background: var(--accent2); color: #fff; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── SPINNER ── */
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid rgba(0,0,0,0.2);
+      border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite;
+      display: inline-block; vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── INSTALL BANNER ── */
+    .install-banner {
+      background: linear-gradient(135deg, rgba(240,180,41,0.12), rgba(240,180,41,0.04));
+      border: 1px solid rgba(240,180,41,0.25); border-radius: var(--r);
+      padding: 16px; margin-bottom: 16px; display: flex; gap: 12px;
+    }
+    .install-banner-icon { font-size: 22px; flex-shrink: 0; padding-top: 2px; }
+    .install-banner-text { font-size: 13px; line-height: 1.6; color: var(--muted); }
+    .install-banner-text strong { color: var(--accent); display: block; margin-bottom: 3px; font-size: 14px; }
+
+    /* ── CONFIG SCREEN ── */
+    #config-screen {
+      display: none; min-height: 100dvh; padding: 40px 24px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(96,165,250,0.08) 0%, transparent 60%);
+    }
+    .config-title { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 2px; margin-bottom: 6px; }
+    .config-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; font-weight: 300; line-height: 1.6; }
+    .config-step {
+      display: flex; gap: 14px; margin-bottom: 20px; align-items: flex-start;
+    }
+    .config-step-num {
+      width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+      color: #000; font-weight: 700; font-size: 13px; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; margin-top: 2px;
+    }
+    .config-step-text { font-size: 14px; line-height: 1.6; color: var(--muted); }
+    .config-step-text strong { color: var(--text); }
+    .config-step-text code {
+      font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      background: var(--surface2); padding: 2px 6px; border-radius: 4px; color: var(--blue);
+      word-break: break-all;
+    }
+    .config-divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+    .config-error { color: var(--accent2); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading-screen">
+  <div class="loader-logo">FuelLog</div>
+  <div class="loader-bar"></div>
+</div>
+
+<!-- CONFIG (first run) -->
+<div id="config-screen">
+  <div class="config-title">SETUP<br><span style="color:var(--accent)">SUPABASE</span></div>
+  <div class="config-sub">FuelLog uses Supabase to store your data securely in the cloud. Follow these steps to connect your database.</div>
+
+  <div class="config-step">
+    <div class="config-step-num">1</div>
+    <div class="config-step-text">Go to <strong>supabase.com</strong> and create a free account, then create a new project.</div>
+  </div>
+  <div class="config-step">
+    <div class="config-step-num">2</div>
+    <div class="config-step-text">In your project, open the <strong>SQL Editor</strong> and run this setup script:<br><br>
+      <code>-- Run this in Supabase SQL Editor</code><br>
+      <code>create table vehicles (</code><br>
+      <code>&nbsp;&nbsp;id uuid default gen_random_uuid() primary key,</code><br>
+      <code>&nbsp;&nbsp;user_id uuid references auth.users not null,</code><br>
+      <code>&nbsp;&nbsp;nickname text, year text, make text,</code><br>
+      <code>&nbsp;&nbsp;model text, fuel text default 'regular',</code><br>
+      <code>&nbsp;&nbsp;created_at timestamptz default now()</code><br>
+      <code>);</code><br><br>
+      <code>create table fillups (</code><br>
+      <code>&nbsp;&nbsp;id uuid default gen_random_uuid() primary key,</code><br>
+      <code>&nbsp;&nbsp;user_id uuid references auth.users not null,</code><br>
+      <code>&nbsp;&nbsp;vehicle_id uuid references vehicles(id) on delete cascade,</code><br>
+      <code>&nbsp;&nbsp;date date not null,</code><br>
+      <code>&nbsp;&nbsp;odometer numeric not null,</code><br>
+      <code>&nbsp;&nbsp;gallons numeric not null,</code><br>
+      <code>&nbsp;&nbsp;price numeric, notes text,</code><br>
+      <code>&nbsp;&nbsp;created_at timestamptz default now()</code><br>
+      <code>);</code><br><br>
+      <code>alter table vehicles enable row level security;</code><br>
+      <code>alter table fillups enable row level security;</code><br><br>
+      <code>create policy "users own vehicles" on vehicles for all using (auth.uid() = user_id) with check (auth.uid() = user_id);</code><br>
+      <code>create policy "users own fillups" on fillups for all using (auth.uid() = user_id) with check (auth.uid() = user_id);</code>
+    </div>
+  </div>
+  <div class="config-step">
+    <div class="config-step-num">3</div>
+    <div class="config-step-text">Go to <strong>Project Settings → API</strong> and copy your <strong>Project URL</strong> and <strong>anon public</strong> key below.</div>
+  </div>
+
+  <hr class="config-divider">
+
+  <div class="field">
+    <label>Supabase Project URL</label>
+    <input type="url" id="cfg-url" placeholder="https://xxxxxxxxxxxx.supabase.co">
+  </div>
+  <div class="field">
+    <label>Supabase Anon Key</label>
+    <input type="text" id="cfg-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+  </div>
+  <div class="config-error" id="cfg-error"></div>
+  <button class="btn btn-primary" id="cfg-save-btn" onclick="saveConfig()" style="margin-top:8px">Connect to Supabase</button>
+</div>
+
+<!-- AUTH -->
+<div id="auth-screen">
+  <div class="auth-logo">Fuel<span>Log</span></div>
+  <div class="auth-tagline">Track fuel economy across all your vehicles</div>
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchAuthTab('signup')">Create Account</button>
+    </div>
+    <div id="login-form">
+      <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"></div>
+      <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    </div>
+    <div id="signup-form" style="display:none">
+      <div class="field"><label>Email</label><input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="field"><label>Password</label><input type="password" id="signup-password" placeholder="Min 6 characters" autocomplete="new-password"></div>
+      <button class="btn btn-primary" id="signup-btn" onclick="doSignup()">Create Account</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="header">
+    <div class="logo">Fuel<span>Log</span></div>
+    <div class="user-pill" onclick="showScreen('settings', document.querySelector('.nav-item:last-child'))">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <div class="user-email" id="user-email-display">user</div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="screen-dashboard" class="screen active">
+    <div class="section-label">Your Fleet</div>
+    <div id="vehicle-list"></div>
+    <div id="empty-vehicles" class="empty" style="display:none">
+      <div class="empty-icon">🚗</div>
+      <div class="empty-title">No Vehicles Yet</div>
+      <div class="empty-sub">Tap the car icon above to add your first vehicle and start tracking fuel economy.</div>
+    </div>
+    <button class="btn btn-secondary" onclick="showAddVehicleModal()" style="margin-top:4px">＋ Add Vehicle</button>
+  </div>
+
+  <!-- Log -->
+  <div id="screen-log" class="screen">
+    <div class="section-label">Select Vehicle</div>
+    <div class="vehicle-selector" onclick="showVehiclePicker('log')">
+      <span class="vs-icon">🚗</span>
+      <div class="vs-info">
+        <div class="vs-name" id="log-vehicle-name">Choose a vehicle</div>
+        <div class="vs-sub">Tap to select</div>
+      </div>
+      <span class="vs-chevron">›</span>
+    </div>
+    <div class="form-card">
+      <div class="form-title">Fill-Up Details</div>
+      <div class="field"><label>Date</label><input type="date" id="log-date"></div>
+      <div class="field-row">
+        <div class="field"><label>Odometer (mi)</label><input type="number" id="log-odometer" placeholder="45230" inputmode="numeric"></div>
+        <div class="field"><label>Gallons</label><input type="number" id="log-gallons" placeholder="12.4" inputmode="decimal" step="0.01"></div>
+      </div>
+      <div class="field"><label>Price / Gallon ($)</label><input type="number" id="log-price" placeholder="3.49" inputmode="decimal" step="0.01"></div>
+      <div class="field"><label>Notes (optional)</label><input type="text" id="log-notes" placeholder="Long trip, premium fuel..."></div>
+      <button class="btn btn-primary" id="save-log-btn" onclick="saveLog()">Save Fill-Up ⛽</button>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div id="screen-history" class="screen">
+    <div class="vehicle-selector" onclick="showVehiclePicker('history')" style="margin-top:16px">
+      <span class="vs-icon">🚗</span>
+      <div class="vs-info">
+        <div class="vs-name" id="history-vehicle-name">Choose a vehicle</div>
+        <div class="vs-sub">Tap to select</div>
+      </div>
+      <span class="vs-chevron">›</span>
+    </div>
+    <div id="history-stats" style="display:none">
+      <div class="gauge-wrap">
+        <div class="gauge-label">Average Fuel Economy</div>
+        <svg class="gauge-svg" viewBox="0 0 190 105">
+          <path d="M 15 95 A 80 80 0 0 1 175 95" fill="none" stroke="#1c2030" stroke-width="13" stroke-linecap="round"/>
+          <path id="gauge-arc" d="M 15 95 A 80 80 0 0 1 175 95" fill="none" stroke="#f0b429" stroke-width="13" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2" style="transition:stroke-dashoffset 0.8s ease, stroke 0.5s ease"/>
+        </svg>
+        <div class="gauge-number" id="gauge-value">--</div>
+        <div class="gauge-unit">MPG average</div>
+      </div>
+      <div class="chart-wrap" id="chart-container" style="display:none">
+        <div class="chart-label">MPG Trend</div>
+        <canvas id="trend-chart" height="110"></canvas>
+      </div>
+    </div>
+    <div class="section-label">Fill-Up History</div>
+    <div id="history-list"></div>
+  </div>
+
+  <!-- Settings -->
+  <div id="screen-settings" class="screen">
+    <div class="install-banner" style="margin-top:16px">
+      <div class="install-banner-icon">📲</div>
+      <div class="install-banner-text">
+        <strong>Install on iPhone</strong>
+        Open in Safari → tap Share → "Add to Home Screen". FuelLog works offline once installed!
+      </div>
+    </div>
+
+    <div class="section-label">Account</div>
+    <div class="form-card">
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label" id="settings-email">—</div>
+          <div class="settings-row-sub">Signed in</div>
+        </div>
+        <div class="settings-row-action" onclick="doSignOut()">Sign Out</div>
+      </div>
+    </div>
+
+    <div class="section-label">Vehicles</div>
+    <div id="settings-vehicles"></div>
+    <button class="btn btn-secondary" onclick="showAddVehicleModal()" style="margin-top:4px">＋ Add Vehicle</button>
+
+    <div class="section-label" style="margin-top:24px">Data</div>
+    <div class="form-card">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:300">Export all your fill-up data as a CSV file.</div>
+      <button class="btn btn-secondary" onclick="exportCSV()">📤 Export to CSV</button>
+    </div>
+
+    <div class="section-label">Connection</div>
+    <div class="form-card">
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Supabase Project</div>
+          <div class="settings-row-sub" id="settings-supabase-url" style="word-break:break-all">—</div>
+        </div>
+        <div class="settings-row-action" onclick="resetConfig()">Reset</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <button class="nav-item active" onclick="showScreen('dashboard',this)"><span class="nav-icon">🏠</span><span class="nav-label">Home</span></button>
+    <button class="nav-item" onclick="showScreen('log',this)"><span class="nav-icon">⛽</span><span class="nav-label">Log</span></button>
+    <button class="nav-item" onclick="showScreen('history',this)"><span class="nav-icon">📊</span><span class="nav-label">History</span></button>
+    <button class="nav-item" onclick="showScreen('settings',this)"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></button>
+  </div>
+</div>
+
+<!-- Modal: Vehicle Form -->
+<div class="modal-overlay" id="vehicle-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="vehicle-modal-title">Add Vehicle</div>
+    <div class="field"><label>Nickname</label><input type="text" id="v-nickname" placeholder="Daily Driver, Work Truck..."></div>
+    <div class="field-row">
+      <div class="field"><label>Year</label><input type="number" id="v-year" placeholder="2022" inputmode="numeric"></div>
+      <div class="field"><label>Make</label><input type="text" id="v-make" placeholder="Toyota"></div>
+    </div>
+    <div class="field"><label>Model</label><input type="text" id="v-model" placeholder="Camry"></div>
+    <div class="field">
+      <label>Fuel Type</label>
+      <select id="v-fuel">
+        <option value="regular">Regular (87)</option>
+        <option value="midgrade">Midgrade (89)</option>
+        <option value="premium">Premium (91+)</option>
+        <option value="diesel">Diesel</option>
+        <option value="e85">E85</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" id="vehicle-modal-btn" onclick="saveVehicle()">Add Vehicle</button>
+    <button class="btn btn-secondary" onclick="closeModal('vehicle-modal')">Cancel</button>
+    <button class="btn btn-danger" id="v-delete-btn" style="display:none" onclick="deleteVehicle()">Delete Vehicle & History</button>
+  </div>
+</div>
+
+<!-- Modal: Vehicle Picker -->
+<div class="modal-overlay" id="picker-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Choose Vehicle</div>
+    <div id="picker-list"></div>
+    <button class="btn btn-secondary" onclick="closeModal('picker-modal')">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const CFG_KEY = 'fuellog_cfg';
+let supabase = null;
+let currentUser = null;
+let vehicles = [];
+let editingVehicleId = null;
+let pickerContext = null;
+let selectedVehicleId = { log: null, history: null };
+
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY)); } catch { return null; }
+}
+
+function saveConfigData(url, key) {
+  localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
+}
+
+function initSupabase(url, key) {
+  supabase = window.supabase.createClient(url, key);
+}
+
+// ── BOOT ────────────────────────────────────────────────────────────────────
+async function boot() {
+  const cfg = getConfig();
+  if (!cfg) {
+    hide('loading-screen');
+    show('config-screen');
+    return;
+  }
+  initSupabase(cfg.url, cfg.key);
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    hide('loading-screen');
+    if (session) {
+      await startApp(session.user);
+    } else {
+      show('auth-screen');
+    }
+  } catch(e) {
+    hide('loading-screen');
+    show('config-screen');
+    document.getElementById('cfg-error').textContent = 'Could not connect. Check your URL and key.';
+  }
+}
+
+// ── CONFIG SAVE ─────────────────────────────────────────────────────────────
+async function saveConfig() {
+  const url = document.getElementById('cfg-url').value.trim();
+  const key = document.getElementById('cfg-key').value.trim();
+  const err = document.getElementById('cfg-error');
+  if (!url || !key) { err.textContent = 'Both fields are required.'; return; }
+  if (!url.startsWith('https://')) { err.textContent = 'URL must start with https://'; return; }
+  setBtnLoading('cfg-save-btn', true);
+  err.textContent = '';
+  try {
+    initSupabase(url, key);
+    const { error } = await supabase.auth.getSession();
+    if (error) throw error;
+    saveConfigData(url, key);
+    hide('config-screen');
+    show('auth-screen');
+  } catch(e) {
+    err.textContent = 'Connection failed. Double-check your URL and anon key.';
+  }
+  setBtnLoading('cfg-save-btn', false);
+}
+
+function resetConfig() {
+  if (!confirm('This will sign you out and reset the Supabase connection. Continue?')) return;
+  localStorage.removeItem(CFG_KEY);
+  location.reload();
+}
+
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0 && tab==='login') || (i===1 && tab==='signup')));
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
+  document.getElementById('auth-error').textContent = '';
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { setAuthError('Email and password required.'); return; }
+  setBtnLoading('login-btn', true);
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { setAuthError(error.message); setBtnLoading('login-btn', false); return; }
+  hide('auth-screen');
+  await startApp(data.user);
+}
+
+async function doSignup() {
+  const email = document.getElementById('signup-email').value.trim();
+  const password = document.getElementById('signup-password').value;
+  if (!email || !password) { setAuthError('Email and password required.'); return; }
+  if (password.length < 6) { setAuthError('Password must be at least 6 characters.'); return; }
+  setBtnLoading('signup-btn', true);
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) { setAuthError(error.message); setBtnLoading('signup-btn', false); return; }
+  if (data.user && !data.session) {
+    setAuthError('Check your email to confirm your account, then sign in.');
+    setBtnLoading('signup-btn', false);
+    return;
+  }
+  hide('auth-screen');
+  await startApp(data.user);
+}
+
+async function doSignOut() {
+  if (!confirm('Sign out?')) return;
+  await supabase.auth.signOut();
+  vehicles = [];
+  currentUser = null;
+  hide('app');
+  show('auth-screen');
+  showToast('Signed out');
+}
+
+function setAuthError(msg) {
+  document.getElementById('auth-error').textContent = msg;
+}
+
+// ── APP START ────────────────────────────────────────────────────────────────
+async function startApp(user) {
+  currentUser = user;
+  const initials = user.email ? user.email[0].toUpperCase() : '?';
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-email-display').textContent = user.email;
+  document.getElementById('settings-email').textContent = user.email;
+  const cfg = getConfig();
+  if (cfg) document.getElementById('settings-supabase-url').textContent = cfg.url;
+  document.getElementById('log-date').value = todayStr();
+  show('app');
+  await loadVehicles();
+  renderDashboard();
+  renderSettingsVehicles();
+}
+
+// ── DATA ─────────────────────────────────────────────────────────────────────
+async function loadVehicles() {
+  const { data, error } = await supabase.from('vehicles').select('*').order('created_at');
+  if (!error) {
+    vehicles = data || [];
+    // auto-select first
+    if (vehicles.length > 0) {
+      if (!selectedVehicleId.log) setSelectedVehicle('log', vehicles[0]);
+      if (!selectedVehicleId.history) setSelectedVehicle('history', vehicles[0]);
+    }
+  }
+}
+
+async function loadFillups(vehicleId) {
+  const { data, error } = await supabase.from('fillups')
+    .select('*').eq('vehicle_id', vehicleId).order('date').order('created_at');
+  if (error) return [];
+  return data || [];
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────────────────
+async function renderDashboard() {
+  const list = document.getElementById('vehicle-list');
+  const empty = document.getElementById('empty-vehicles');
+  list.innerHTML = '';
+  if (vehicles.length === 0) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  for (const v of vehicles) {
+    const fillups = await loadFillups(v.id);
+    const mpgs = calcMPGList(fillups);
+    const avg = mpgs.length ? mpgs.reduce((a,b) => a+b, 0) / mpgs.length : 0;
+    const totalMiles = fillups.length >= 2 ? parseFloat(fillups[fillups.length-1].odometer) - parseFloat(fillups[0].odometer) : 0;
+    const totalSpent = fillups.reduce((s,f) => s + (parseFloat(f.gallons)||0)*(parseFloat(f.price)||0), 0);
+    const card = document.createElement('div');
+    card.className = 'vehicle-card';
+    card.innerHTML = `
+      <div class="vehicle-header">
+        <div>
+          <div class="vehicle-name">${v.nickname || (v.make + ' ' + v.model).toUpperCase()}</div>
+          <div class="vehicle-sub">${[v.year, v.make, v.model].filter(Boolean).join(' ')}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="fuel-chip">${(v.fuel||'regular').toUpperCase()}</span>
+          <span style="font-size:18px;cursor:pointer" onclick="event.stopPropagation();editVehicle('${v.id}')">✏️</span>
+        </div>
+      </div>
+      <div class="vehicle-stats">
+        <div class="stat"><div class="stat-value ${mpgClass(avg)}">${avg > 0 ? avg.toFixed(1) : '--'}</div><div class="stat-label">Avg MPG</div></div>
+        <div class="stat"><div class="stat-value">${totalMiles > 0 ? Math.round(totalMiles).toLocaleString() : '--'}</div><div class="stat-label">Miles</div></div>
+        <div class="stat"><div class="stat-value">${totalSpent > 0 ? '$'+totalSpent.toFixed(0) : '--'}</div><div class="stat-label">Spent</div></div>
+      </div>`;
+    card.addEventListener('click', () => {
+      setSelectedVehicle('history', v);
+      showScreen('history', document.querySelector('.nav-item:nth-child(3)'));
+    });
+    list.appendChild(card);
+  }
+}
+
+// ── HISTORY ──────────────────────────────────────────────────────────────────
+async function renderHistory() {
+  const vid = selectedVehicleId.history;
+  const stats = document.getElementById('history-stats');
+  const list = document.getElementById('history-list');
+  if (!vid) {
+    stats.style.display = 'none';
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Select a Vehicle</div><div class="empty-sub">Choose a vehicle above to view fill-up history.</div></div>';
+    return;
+  }
+  list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">Loading…</div>';
+  const fillups = await loadFillups(vid);
+  const mpgs = calcMPGList(fillups);
+  const avg = mpgs.length ? mpgs.reduce((a,b)=>a+b,0)/mpgs.length : 0;
+  if (fillups.length > 0) {
+    stats.style.display = 'block';
+    updateGauge(avg);
+    const chartWrap = document.getElementById('chart-container');
+    if (mpgs.length >= 2) { chartWrap.style.display = 'block'; requestAnimationFrame(() => drawChart(mpgs)); }
+    else chartWrap.style.display = 'none';
+  } else {
+    stats.style.display = 'none';
+  }
+  list.innerHTML = '';
+  if (fillups.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">⛽</div><div class="empty-title">No Fill-Ups Yet</div><div class="empty-sub">Log your first fill-up to start tracking MPG.</div></div>';
+    return;
+  }
+  const reversed = [...fillups].reverse();
+  reversed.forEach((f, idx) => {
+    const origIdx = fillups.indexOf(f);
+    let mpg = null;
+    if (origIdx > 0) {
+      const prev = fillups[origIdx - 1];
+      const miles = parseFloat(f.odometer) - parseFloat(prev.odometer);
+      const gals = parseFloat(f.gallons);
+      if (miles > 0 && gals > 0) mpg = miles / gals;
+    }
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.innerHTML = `
+      <div class="log-main">
+        <div class="log-date">${formatDate(f.date)}</div>
+        <div class="log-details">${parseFloat(f.gallons).toFixed(2)} gal · ${parseInt(f.odometer).toLocaleString()} mi${f.price ? ' · $'+parseFloat(f.price).toFixed(2)+'/gal' : ''}${f.notes ? ' · '+f.notes : ''}</div>
+      </div>
+      <div class="log-mpg-block">
+        <div class="log-mpg">${mpg ? mpg.toFixed(1) : '--'}</div>
+        <div class="log-mpg-label">MPG</div>
+      </div>
+      <button class="log-delete" onclick="deleteFillup('${f.id}')">🗑</button>`;
+    list.appendChild(item);
+  });
+}
+
+// ── LOG FILL-UP ───────────────────────────────────────────────────────────────
+async function saveLog() {
+  const vid = selectedVehicleId.log;
+  if (!vid) { showToast('Select a vehicle first', true); return; }
+  const date = document.getElementById('log-date').value;
+  const odometer = document.getElementById('log-odometer').value;
+  const gallons = document.getElementById('log-gallons').value;
+  const price = document.getElementById('log-price').value;
+  const notes = document.getElementById('log-notes').value.trim();
+  if (!date || !odometer || !gallons) { showToast('Date, odometer & gallons required', true); return; }
+  setBtnLoading('save-log-btn', true);
+  const { error } = await supabase.from('fillups').insert({
+    user_id: currentUser.id, vehicle_id: vid,
+    date, odometer: parseFloat(odometer), gallons: parseFloat(gallons),
+    price: price ? parseFloat(price) : null, notes: notes || null
+  });
+  setBtnLoading('save-log-btn', false);
+  if (error) { showToast('Error saving fill-up', true); return; }
+  showToast('Fill-up saved ⛽');
+  ['log-odometer','log-gallons','log-price','log-notes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('log-date').value = todayStr();
+}
+
+async function deleteFillup(id) {
+  if (!confirm('Delete this fill-up?')) return;
+  await supabase.from('fillups').delete().eq('id', id);
+  showToast('Deleted');
+  renderHistory();
+}
+
+// ── VEHICLE CRUD ──────────────────────────────────────────────────────────────
+function showAddVehicleModal() {
+  editingVehicleId = null;
+  document.getElementById('vehicle-modal-title').textContent = 'Add Vehicle';
+  document.getElementById('vehicle-modal-btn').textContent = 'Add Vehicle';
+  document.getElementById('v-delete-btn').style.display = 'none';
+  ['v-nickname','v-year','v-make','v-model'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('v-fuel').value = 'regular';
+  openModal('vehicle-modal');
+}
+
+function editVehicle(id) {
+  editingVehicleId = id;
+  const v = vehicles.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('vehicle-modal-title').textContent = 'Edit Vehicle';
+  document.getElementById('vehicle-modal-btn').textContent = 'Save Changes';
+  document.getElementById('v-delete-btn').style.display = 'block';
+  document.getElementById('v-nickname').value = v.nickname || '';
+  document.getElementById('v-year').value = v.year || '';
+  document.getElementById('v-make').value = v.make || '';
+  document.getElementById('v-model').value = v.model || '';
+  document.getElementById('v-fuel').value = v.fuel || 'regular';
+  openModal('vehicle-modal');
+}
+
+async function saveVehicle() {
+  const make = document.getElementById('v-make').value.trim();
+  if (!make) { showToast('Make is required', true); return; }
+  const payload = {
+    nickname: document.getElementById('v-nickname').value.trim() || null,
+    year: document.getElementById('v-year').value.trim() || null,
+    make, model: document.getElementById('v-model').value.trim() || null,
+    fuel: document.getElementById('v-fuel').value
+  };
+  setBtnLoading('vehicle-modal-btn', true);
+  let error;
+  if (editingVehicleId) {
+    ({ error } = await supabase.from('vehicles').update(payload).eq('id', editingVehicleId));
+  } else {
+    ({ error } = await supabase.from('vehicles').insert({ ...payload, user_id: currentUser.id }));
+  }
+  setBtnLoading('vehicle-modal-btn', false);
+  if (error) { showToast('Error saving vehicle', true); return; }
+  closeModal('vehicle-modal');
+  await loadVehicles();
+  renderDashboard();
+  renderSettingsVehicles();
+  showToast(editingVehicleId ? 'Vehicle updated' : 'Vehicle added 🚗');
+}
+
+async function deleteVehicle() {
+  if (!confirm('Delete this vehicle and ALL its fill-up history?')) return;
+  await supabase.from('vehicles').delete().eq('id', editingVehicleId);
+  closeModal('vehicle-modal');
+  if (selectedVehicleId.log === editingVehicleId) { selectedVehicleId.log = null; document.getElementById('log-vehicle-name').textContent = 'Choose a vehicle'; }
+  if (selectedVehicleId.history === editingVehicleId) { selectedVehicleId.history = null; document.getElementById('history-vehicle-name').textContent = 'Choose a vehicle'; }
+  await loadVehicles();
+  renderDashboard();
+  renderSettingsVehicles();
+  showToast('Vehicle deleted');
+}
+
+// ── VEHICLE PICKER ────────────────────────────────────────────────────────────
+function showVehiclePicker(ctx) {
+  pickerContext = ctx;
+  const list = document.getElementById('picker-list');
+  list.innerHTML = '';
+  if (vehicles.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-title">No Vehicles</div><div class="empty-sub">Add a vehicle first.</div></div>';
+  } else {
+    vehicles.forEach(v => {
+      const item = document.createElement('div');
+      item.className = 'picker-item';
+      item.innerHTML = `<span class="picker-item-icon">🚗</span><div><div class="picker-item-name">${v.nickname || v.make + ' ' + v.model}</div><div class="picker-item-sub">${[v.year,v.make,v.model].filter(Boolean).join(' ')} · ${v.fuel}</div></div>`;
+      item.onclick = () => { setSelectedVehicle(ctx, v); closeModal('picker-modal'); if (ctx === 'history') renderHistory(); };
+      list.appendChild(item);
+    });
+  }
+  openModal('picker-modal');
+}
+
+function setSelectedVehicle(ctx, v) {
+  selectedVehicleId[ctx] = v.id;
+  const el = document.getElementById(ctx + '-vehicle-name');
+  if (el) el.textContent = v.nickname || v.make + ' ' + v.model;
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────────
+function renderSettingsVehicles() {
+  const el = document.getElementById('settings-vehicles');
+  el.innerHTML = '';
+  if (vehicles.length === 0) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px 0 12px">No vehicles yet.</div>'; return; }
+  vehicles.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'form-card';
+    card.style.marginBottom = '10px';
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px">${v.nickname || v.make + ' ' + v.model}</div><div style="font-size:12px;color:var(--muted);margin-top:2px">${[v.year,v.make,v.model].filter(Boolean).join(' ')}</div></div><span style="font-size:18px;cursor:pointer" onclick="editVehicle('${v.id}')">✏️</span></div>`;
+    el.appendChild(card);
+  });
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+async function exportCSV() {
+  const rows = [['Date','Vehicle','Odometer','Gallons','Price/Gal','Notes','MPG']];
+  for (const v of vehicles) {
+    const fillups = await loadFillups(v.id);
+    fillups.forEach((f, i) => {
+      let mpg = '';
+      if (i > 0) {
+        const miles = parseFloat(f.odometer) - parseFloat(fillups[i-1].odometer);
+        const gals = parseFloat(f.gallons);
+        if (miles > 0 && gals > 0) mpg = (miles/gals).toFixed(2);
+      }
+      rows.push([f.date, `${v.year||''} ${v.make||''} ${v.model||''}`.trim(), f.odometer, f.gallons, f.price||'', f.notes||'', mpg]);
+    });
+  }
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'fuellog_export.csv';
+  a.click();
+  showToast('Exported ✓');
+}
+
+// ── GAUGE & CHART ─────────────────────────────────────────────────────────────
+function updateGauge(mpg) {
+  const arc = document.getElementById('gauge-arc');
+  const val = document.getElementById('gauge-value');
+  const pct = Math.min((mpg||0) / 50, 1);
+  arc.style.strokeDashoffset = 251.2 - (251.2 * pct);
+  arc.style.stroke = mpg >= 30 ? '#34d399' : mpg >= 20 ? '#f0b429' : '#ff5c5c';
+  val.textContent = mpg > 0 ? mpg.toFixed(1) : '--';
+}
+
+function drawChart(mpgList) {
+  const canvas = document.getElementById('trend-chart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth - 36;
+  const h = 110;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+  const pad = { t:10, r:10, b:22, l:38 };
+  const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+  const min = Math.min(...mpgList) * 0.88, max = Math.max(...mpgList) * 1.12;
+  ctx.clearRect(0,0,w,h);
+  [0,0.5,1].forEach(t => {
+    const y = pad.t + ch - t * ch;
+    ctx.strokeStyle='#252a3a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cw,y); ctx.stroke();
+    ctx.fillStyle='#6b7494'; ctx.font=`10px "JetBrains Mono"`;
+    ctx.fillText((min + t*(max-min)).toFixed(0), 2, y+4);
+  });
+  const pts = mpgList.map((v,i) => ({
+    x: pad.l + (i/(mpgList.length-1||1))*cw,
+    y: pad.t + ch - ((v-min)/(max-min||1))*ch
+  }));
+  const grad = ctx.createLinearGradient(0,pad.t,0,pad.t+ch);
+  grad.addColorStop(0,'rgba(240,180,41,0.28)'); grad.addColorStop(1,'rgba(240,180,41,0)');
+  ctx.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.lineTo(pts[pts.length-1].x, pad.t+ch); ctx.lineTo(pts[0].x, pad.t+ch);
+  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle='#f0b429'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.stroke();
+  pts.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x,p.y,3.5,0,Math.PI*2);
+    ctx.fillStyle='#f0b429'; ctx.fill();
+  });
+}
+
+// ── MPG CALC ──────────────────────────────────────────────────────────────────
+function calcMPGList(fillups) {
+  const mpgs = [];
+  for (let i = 1; i < fillups.length; i++) {
+    const miles = parseFloat(fillups[i].odometer) - parseFloat(fillups[i-1].odometer);
+    const gals = parseFloat(fillups[i].gallons);
+    if (miles > 0 && gals > 0) mpgs.push(miles/gals);
+  }
+  return mpgs;
+}
+
+function mpgClass(mpg) {
+  if (mpg <= 0) return '';
+  return mpg >= 30 ? 'good' : mpg <= 15 ? 'bad' : '';
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function showScreen(name, btn) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  else if (name === 'history') renderHistory();
+  else if (name === 'settings') renderSettingsVehicles();
+}
+
+// ── MODALS ────────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function show(id) { const el = document.getElementById(id); el.style.display = el.tagName === 'DIV' ? 'flex' : 'block'; if (id==='app') el.style.display='block'; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function formatDate(str) { if (!str) return ''; const d = new Date(str+'T00:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function setBtnLoading(id, loading) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  if (loading) { btn._orig = btn.innerHTML; btn.innerHTML = '<span class="spinner"></span> Working…'; }
+  else if (btn._orig) { btn.innerHTML = btn._orig; }
+}
+
+// ── ENTER KEY SUPPORT ─────────────────────────────────────────────────────────
+document.getElementById('login-password').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('signup-password').addEventListener('keydown', e => { if (e.key==='Enter') doSignup(); });
+
+// ── GO ────────────────────────────────────────────────────────────────────────
+boot();
+</script>
+</body>
+</html>
